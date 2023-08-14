@@ -13,19 +13,10 @@ public class SerializationService
             File.Delete(fileName);
 
         var serializer = new XmlSerializer(typeof(Person));
-        var namespaces = new XmlSerializerNamespaces();
-        namespaces.Add(string.Empty, string.Empty);
-        var settings = new XmlWriterSettings
-        {
-            OmitXmlDeclaration = true,
-            Indent = true,
-            IndentChars = "\t"
-        };
-
         // serialize object to memory stream.
         var ms = new MemoryStream();
-        using var xmlWriter = XmlWriter.Create(ms, settings);
-        serializer.Serialize(xmlWriter, person, namespaces);
+        using var xmlWriter = XmlWriter.Create(ms, GetXmlWriterSettings());
+        serializer.Serialize(xmlWriter, person, GetXmlSerializerNamespaces());
 
         // sha512 hash
         var computeHash = SHA512.HashData(ms.ToArray());
@@ -33,7 +24,51 @@ public class SerializationService
 
         // add checksum and output to file
         person.CheckSum = checksum;
-        var xmlWriterFile = XmlWriter.Create(fileName, settings);
-        serializer.Serialize(xmlWriterFile, person, namespaces);
+        using var xmlWriterFile = XmlWriter.Create(fileName, GetXmlWriterSettings());
+        serializer.Serialize(xmlWriterFile, person, GetXmlSerializerNamespaces());
+    }
+
+    public static bool Verify(string fileName)
+    {
+        // read xml file and deserialize to object
+        var xmlReader = XmlReader.Create(fileName);
+        var serializer = new XmlSerializer(typeof(Person));
+        var person = serializer.Deserialize(xmlReader) as Person;
+
+        if (person == null)
+            return false;
+
+        // get checksum element in xml file
+        var checksum = person.CheckSum;
+        
+        // calculate checksum for xml file 
+        person.CheckSum = null;
+        
+        var ms = new MemoryStream();
+        using var xmlWriter = XmlWriter.Create(ms, GetXmlWriterSettings());
+        serializer.Serialize(xmlWriter, person, GetXmlSerializerNamespaces());
+        
+        var computeHash = SHA512.HashData(ms.ToArray());
+        var checksumVerify = string.Join(string.Empty, computeHash.Select(hash => hash.ToString("x2")));
+
+        // verify checksum
+        return checksumVerify == checksum;
+    }
+
+    private static XmlWriterSettings GetXmlWriterSettings()
+    {
+        return new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true,
+            Indent = true,
+            IndentChars = "\t"
+        };
+    }
+
+    private static XmlSerializerNamespaces GetXmlSerializerNamespaces()
+    {
+        var namespaces = new XmlSerializerNamespaces();
+        namespaces.Add(string.Empty, string.Empty);
+        return namespaces;
     }
 }
